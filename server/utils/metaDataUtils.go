@@ -481,6 +481,12 @@ func ExecuteAndParseMetaDataScan(scanID, domain string) {
 		// Convert matched-at (host:port) to URL
 		url := "https://" + strings.TrimSuffix(matchedURL, ":443")
 
+		// Skip URLs with encoded characters that are nuclei test paths
+		if strings.Contains(url, "%") {
+			log.Printf("[DEBUG] Skipping nuclei test URL with encoded characters: %s", url)
+			continue
+		}
+
 		// Update the target_urls table based on the template
 		var updateField string
 		switch templateID {
@@ -733,6 +739,12 @@ func ExecuteAndParseNucleiTechScan(urls []string, scopeTargetID string) error {
 		} else {
 			// Just a hostname
 			matchedURL = NormalizeURL("https://" + matchedURL)
+		}
+
+		// Skip URLs with encoded characters that are nuclei test paths
+		if strings.Contains(matchedURL, "%") {
+			log.Printf("[DEBUG] Skipping nuclei test URL with encoded characters: %s", matchedURL)
+			continue
 		}
 
 		// Add finding to the URL's findings array
@@ -1621,11 +1633,11 @@ func GetCompanyMetaDataResults(w http.ResponseWriter, r *http.Request) {
 			id                  string
 			url                 string
 			scopeTargetID       string
-			statusCode          int
+			statusCode          sql.NullInt32
 			title               sql.NullString
 			webServer           sql.NullString
 			technologies        []string
-			contentLength       int
+			contentLength       sql.NullInt32
 			findingsJSON        sql.NullString
 			katanaResults       sql.NullString
 			ffufResults         sql.NullString
@@ -1668,11 +1680,11 @@ func GetCompanyMetaDataResults(w http.ResponseWriter, r *http.Request) {
 			"id":                     id,
 			"url":                    url,
 			"scope_target_id":        scopeTargetID,
-			"status_code":            statusCode,
+			"status_code":            nullIntToInt(statusCode),
 			"title":                  nullStringToString(title),
 			"web_server":             nullStringToString(webServer),
 			"technologies":           technologies,
-			"content_length":         contentLength,
+			"content_length":         nullIntToInt(contentLength),
 			"findings_json":          nullStringToString(findingsJSON),
 			"katana_results":         nullStringToString(katanaResults),
 			"ffuf_results":           nullStringToString(ffufResults),
@@ -1701,5 +1713,8 @@ func GetCompanyMetaDataResults(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	if targetURLs == nil {
+		targetURLs = make([]map[string]interface{}, 0)
+	}
 	json.NewEncoder(w).Encode(targetURLs)
 }

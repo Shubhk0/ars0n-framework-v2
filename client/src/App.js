@@ -12,6 +12,8 @@ import { ShuffleDNSResultsModal } from './modals/shuffleDNSModals.js';
 import ScreenshotResultsModal from './modals/ScreenshotResultsModal.js';
 import SettingsModal from './modals/SettingsModal.js';
 import ExportModal from './modals/ExportModal.js';
+import ImportModal from './modals/ImportModal.js';
+import WelcomeModal from './modals/WelcomeModal.js';
 import GoogleDorkingModal from './modals/GoogleDorkingModal.js';
 import Ars0nFrameworkHeader from './components/ars0nFrameworkHeader.js';
 import ManageScopeTargets from './components/manageScopeTargets.js';
@@ -24,7 +26,6 @@ import {
   Col,
   Button,
   ListGroup,
-  Accordion,
   Modal,
   Table,
   Toast,
@@ -154,6 +155,7 @@ import KatanaCompanyConfigModal from './modals/KatanaCompanyConfigModal.js';
 import KatanaCompanyResultsModal from './modals/KatanaCompanyResultsModal.js';
 import { KatanaCompanyHistoryModal } from './modals/KatanaCompanyHistoryModal.js';
 import { initiateKatanaCompanyScan } from './utils/initiateKatanaCompanyScan.js';
+import monitorKatanaCompanyScanStatus from './utils/monitorKatanaCompanyScanStatus.js';
 
 // Add Cloud Enum imports
 import initiateCloudEnumScan from './utils/initiateCloudEnumScan';
@@ -322,6 +324,8 @@ function App() {
   const [showModal, setShowModal] = useState(false);
   const [showActiveModal, setShowActiveModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [selections, setSelections] = useState({
     type: '',
     inputText: '',
@@ -1656,7 +1660,7 @@ function App() {
           }
         }
       } else {
-        setShowModal(true);
+        setShowWelcomeModal(true);
       }
     } catch (error) {
       console.error('Error fetching scope targets:', error);
@@ -2842,7 +2846,8 @@ function App() {
         throw new Error('Failed to fetch target URLs');
       }
       const data = await response.json();
-      setTargetURLs(data);
+      const safeData = data || [];
+      setTargetURLs(safeData);
       setShowMetaDataModal(true);
     } catch (error) {
       console.error('Error fetching target URLs:', error);
@@ -2859,9 +2864,10 @@ function App() {
         throw new Error('Failed to fetch target URLs');
       }
       const data = await response.json();
+      const safeData = data || [];
 
       // Calculate and update ROI scores for each target
-      const updatePromises = data.map(async (target) => {
+      const updatePromises = safeData.map(async (target) => {
         const score = calculateROIScore(target);
         const updateResponse = await fetch(
           `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/api/target-urls/${target.id}/roi-score`,
@@ -2889,7 +2895,8 @@ function App() {
         throw new Error('Failed to fetch updated target URLs');
       }
       const updatedData = await updatedResponse.json();
-      setTargetURLs(updatedData);
+      const safeUpdatedData = updatedData || [];
+      setTargetURLs(safeUpdatedData);
       setShowROIReport(true);
     } catch (error) {
       console.error('Error preparing ROI report:', error);
@@ -2906,6 +2913,38 @@ function App() {
 
   const handleOpenExportModal = () => {
     setShowExportModal(true);
+  };
+
+  const handleOpenImportModal = () => {
+    setShowImportModal(true);
+  };
+
+  const handleCloseImportModal = () => {
+    setShowImportModal(false);
+  };
+
+  const handleCloseWelcomeModal = () => {
+    setShowWelcomeModal(false);
+  };
+
+  const handleWelcomeAddScopeTarget = () => {
+    setShowWelcomeModal(false);
+    setShowModal(true);
+  };
+
+  const handleWelcomeImportData = () => {
+    setShowWelcomeModal(false);
+    setShowImportModal(true);
+  };
+
+  const handleImportSuccess = async (result) => {
+    await fetchScopeTargets();
+  };
+
+  const handleBackToWelcome = () => {
+    setShowModal(false);
+    setShowImportModal(false);
+    setShowWelcomeModal(true);
   };
 
   const handleOpenSettingsOnAPIKeysTab = () => {
@@ -3709,6 +3748,19 @@ function App() {
     }
   }, [activeTarget]);
 
+  useEffect(() => {
+    if (activeTarget) {
+      monitorKatanaCompanyScanStatus(
+        activeTarget,
+        setKatanaCompanyScans,
+        setMostRecentKatanaCompanyScan,
+        setIsKatanaCompanyScanning,
+        setMostRecentKatanaCompanyScanStatus,
+        setKatanaCompanyCloudAssets
+      );
+    }
+  }, [activeTarget]);
+
   const handleDomainsDeleted = async () => {
     if (activeTarget) {
       try {
@@ -3809,7 +3861,7 @@ function App() {
                 // Fetch accumulated cloud assets for the card count
                 try {
                   const assetsResponse = await fetch(
-                    `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/katana-company/${mostRecentScan.scan_id}/cloud-assets`
+                    `${process.env.REACT_APP_SERVER_PROTOCOL}://${process.env.REACT_APP_SERVER_IP}:${process.env.REACT_APP_SERVER_PORT}/katana-company/target/${activeTarget.id}/cloud-assets`
                   );
                   if (assetsResponse.ok) {
                     const assets = await assetsResponse.json();
@@ -4266,6 +4318,7 @@ function App() {
       <Ars0nFrameworkHeader 
         onSettingsClick={handleOpenSettingsModal} 
         onExportClick={handleOpenExportModal}
+        onImportClick={handleOpenImportModal}
       />
 
       <ToastContainer 
@@ -4315,6 +4368,8 @@ function App() {
         handleSelect={handleSelect}
         handleFormSubmit={handleSubmit}
         errorMessage={errorMessage}
+        showBackButton={scopeTargets.length === 0}
+        onBackClick={handleBackToWelcome}
       />
 
       <SelectActiveScopeTargetModal
@@ -4336,6 +4391,21 @@ function App() {
       <ExportModal
         show={showExportModal}
         handleClose={handleCloseExportModal}
+      />
+
+      <ImportModal
+        show={showImportModal}
+        handleClose={handleCloseImportModal}
+        onSuccess={handleImportSuccess}
+        showBackButton={scopeTargets.length === 0}
+        onBackClick={handleBackToWelcome}
+      />
+
+      <WelcomeModal
+        show={showWelcomeModal}
+        handleClose={handleCloseWelcomeModal}
+        onAddScopeTarget={handleWelcomeAddScopeTarget}
+        onImportData={handleWelcomeImportData}
       />
 
       <Modal data-bs-theme="dark" show={showScanHistoryModal} onHide={handleCloseScanHistoryModal} size="xl">
@@ -4587,6 +4657,7 @@ function App() {
               <div className="mb-4">
                 <h3 className="text-danger mb-3">Company</h3>
                 <h4 className="text-secondary mb-3 fs-5">ASN (On-Prem) Network Ranges</h4>
+                <HelpMeLearn section="companyNetworkRanges" />
                 <Row className="mb-4">
                   {[
                     {
@@ -4680,6 +4751,7 @@ function App() {
                 </Row>
                 
                 <h4 className="text-secondary mb-3 fs-5">Discover Live Web Servers (On-Prem)</h4>
+                <HelpMeLearn section="companyLiveWebServers" />
                 <Row className="mb-4">
                   <Col>
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
@@ -4766,6 +4838,7 @@ function App() {
                   </Col>
                 </Row>
                 <h4 className="text-secondary mb-3 fs-5">Root Domain Discovery (No API Key)</h4>
+                <HelpMeLearn section="companyRootDomainDiscovery" />
                 <Row className="row-cols-3 g-3 mb-4">
                   {[
                     { 
@@ -4903,6 +4976,7 @@ function App() {
                     Configure API Keys
                   </Button>
                 </div>
+                <HelpMeLearn section="companyRootDomainDiscoveryAPI" />
                 <Row className="row-cols-4 g-3 mb-4">
                   {[
                     { 
@@ -5067,6 +5141,7 @@ function App() {
                 </Row>
                 
                 <h4 className="text-secondary mb-3 fs-5">Consolidate Root Domains</h4>
+                <HelpMeLearn section="companyConsolidateRootDomains" />
                 <Row className="mb-4">
                   <Col>
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
@@ -5157,6 +5232,7 @@ function App() {
                 </Row>
                 
                 <h4 className="text-secondary mb-3 fs-5">Cloud Asset Enumeration (DNS)</h4>
+                <HelpMeLearn section="companySubdomainEnumeration" />
                 <Row className="row-cols-2 g-3 mb-4">
                   <Col>
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '300px' }}>
@@ -5263,6 +5339,7 @@ function App() {
                 </Row>
 
                 <h4 className="text-secondary mb-3 fs-5">Cloud Asset Enumeration (Brute-Force & Crawl)</h4>
+                <HelpMeLearn section="companyBruteForceCrawl" />
                 <Row className="row-cols-2 g-3 mb-4">
                   <Col>
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '300px' }}>
@@ -5385,6 +5462,7 @@ function App() {
                 </Row>
 
                 <h4 className="text-secondary mb-3 fs-5">{activeTarget.scope_target}'s Full Attack Surface</h4>
+                <HelpMeLearn section="companyDecisionPoint" />
                 <Row className="mb-4">
                   <Col>
                   <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
@@ -5443,6 +5521,7 @@ function App() {
                 </Row>
 
                 <h4 className="text-secondary mb-3 fs-5">Nuclei Scanning</h4>
+                <HelpMeLearn section="companyNucleiScanning" />
                 <Row className="mb-4">
                   <Col>
                   <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
@@ -5685,35 +5764,7 @@ function App() {
                   ))}
                 </Row>
                 <h4 className="text-secondary mb-3 fs-5">Consolidate Subdomains & Discover Live Web Servers - Round 1</h4>
-                <Accordion data-bs-theme="dark" className="mb-3">
-                  <Accordion.Item eventKey="0">
-                    <Accordion.Header className="fs-5">Help Me Learn!</Accordion.Header>
-                    <Accordion.Body className="bg-dark">
-                      <ListGroup as="ul" variant="flush">
-                        <ListGroup.Item as="li" className="bg-dark text-white">
-                          Major learning topic one{' '}
-                          <a href="https://example.com/topic1" className="text-danger text-decoration-none">
-                            Learn More
-                          </a>
-                          <ListGroup as="ul" variant="flush" className="mt-2">
-                            <ListGroup.Item as="li" className="bg-dark text-white fst-italic">
-                              Minor Topic one{' '}
-                              <a href="#" className="text-danger text-decoration-none">
-                                Learn More
-                              </a>
-                            </ListGroup.Item>
-                          </ListGroup>
-                        </ListGroup.Item>
-                        <ListGroup.Item as="li" className="bg-dark text-white">
-                          Major learning topic two{' '}
-                          <a href="https://example.com/topic2" className="text-danger text-decoration-none">
-                            Learn More
-                          </a>
-                        </ListGroup.Item>
-                      </ListGroup>
-                    </Accordion.Body>
-                  </Accordion.Item>
-                </Accordion>
+                <HelpMeLearn section="consolidationRound1" />
                 <Row className="mb-4">
                   <Col>
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
@@ -5846,35 +5897,7 @@ function App() {
                   ))}
                 </Row>
                 <h4 className="text-secondary mb-3 fs-5">Consolidate Subdomains & Discover Live Web Servers - Round 2</h4>
-                <Accordion data-bs-theme="dark" className="mb-3">
-                  <Accordion.Item eventKey="0">
-                    <Accordion.Header className="fs-5">Help Me Learn!</Accordion.Header>
-                    <Accordion.Body className="bg-dark">
-                      <ListGroup as="ul" variant="flush">
-                        <ListGroup.Item as="li" className="bg-dark text-white">
-                          Major learning topic one{' '}
-                          <a href="https://example.com/topic1" className="text-danger text-decoration-none">
-                            Learn More
-                          </a>
-                          <ListGroup as="ul" variant="flush" className="mt-2">
-                            <ListGroup.Item as="li" className="bg-dark text-white fst-italic">
-                              Minor Topic one{' '}
-                              <a href="#" className="text-danger text-decoration-none">
-                                Learn More
-                              </a>
-                            </ListGroup.Item>
-                          </ListGroup>
-                        </ListGroup.Item>
-                        <ListGroup.Item as="li" className="bg-dark text-white">
-                          Major learning topic two{' '}
-                          <a href="https://example.com/topic2" className="text-danger text-decoration-none">
-                            Learn More
-                          </a>
-                        </ListGroup.Item>
-                      </ListGroup>
-                    </Accordion.Body>
-                  </Accordion.Item>
-                </Accordion>
+                <HelpMeLearn section="consolidationRound2" />
                 <Row className="mb-4">
                   <Col>
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>
@@ -6005,35 +6028,7 @@ function App() {
                   ))}
                 </Row>
                 <h4 className="text-secondary mb-3 fs-5">Consolidate Subdomains & Discover Live Web Servers - Round 3</h4>
-                <Accordion data-bs-theme="dark" className="mb-3">
-                  <Accordion.Item eventKey="0">
-                    <Accordion.Header className="fs-5">Help Me Learn!</Accordion.Header>
-                    <Accordion.Body className="bg-dark">
-                      <ListGroup as="ul" variant="flush">
-                        <ListGroup.Item as="li" className="bg-dark text-white">
-                          Major learning topic one{' '}
-                          <a href="https://example.com/topic1" className="text-danger text-decoration-none">
-                            Learn More
-                          </a>
-                          <ListGroup as="ul" variant="flush" className="mt-2">
-                            <ListGroup.Item as="li" className="bg-dark text-white fst-italic">
-                              Minor Topic one{' '}
-                              <a href="#" className="text-danger text-decoration-none">
-                                Learn More
-                              </a>
-                            </ListGroup.Item>
-                          </ListGroup>
-                        </ListGroup.Item>
-                        <ListGroup.Item as="li" className="bg-dark text-white">
-                          Major learning topic two{' '}
-                          <a href="https://example.com/topic2" className="text-danger text-decoration-none">
-                            Learn More
-                          </a>
-                        </ListGroup.Item>
-                      </ListGroup>
-                    </Accordion.Body>
-                  </Accordion.Item>
-                </Accordion>
+                <HelpMeLearn section="consolidationRound3" />
                 <Row className="mb-4">
                   <Col>
                     <Card className="shadow-sm h-100 text-center" style={{ minHeight: '200px' }}>

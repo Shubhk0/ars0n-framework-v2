@@ -1,6 +1,6 @@
 import { Row, Col, Button } from 'react-bootstrap';
 
-function Ars0nFrameworkHeader({ onSettingsClick, onExportClick }) {
+function Ars0nFrameworkHeader({ onSettingsClick, onExportClick, onImportClick }) {
   return (
     <Row className="align-items-center mb-3">
       <Col xs="auto">
@@ -31,11 +31,13 @@ function Ars0nFrameworkHeader({ onSettingsClick, onExportClick }) {
         >
           <i className="bi bi-cup-hot" style={{ fontSize: '1.5rem' }}></i>
         </Button>
-        <Button variant="link" className="text-white p-1">
-          <i className="bi bi-question-circle" style={{ fontSize: '1.5rem' }}></i>
-        </Button>
-        <Button variant="link" className="text-white p-1">
-          <i className="bi bi-person" style={{ fontSize: '1.5rem' }}></i>
+        <Button 
+          variant="link" 
+          className="text-white p-1"
+          onClick={onImportClick}
+          title="Import Database"
+        >
+          <i className="bi bi-upload" style={{ fontSize: '1.5rem' }}></i>
         </Button>
         <Button 
           variant="link" 
